@@ -1,0 +1,66 @@
+name: Publish Frontend Docker images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Trello-Clone-Frontend/**"
+      - ".github/workflows/docker-publish-frontend.yml"
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - app: user
+            context: Trello-Clone-Frontend
+            dockerfile: Trello-Clone-Frontend/apps/user/Dockerfile
+            image: trello-clone-frontend-user
+          - app: admin
+            context: Trello-Clone-Frontend
+            dockerfile: Trello-Clone-Frontend/apps/admin/Dockerfile
+            image: trello-clone-frontend-admin
+          - app: landing
+            context: Trello-Clone-Frontend/apps/landing
+            dockerfile: Trello-Clone-Frontend/apps/landing/Dockerfile
+            image: trello-clone-landing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.context }}
+          file: ./${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
