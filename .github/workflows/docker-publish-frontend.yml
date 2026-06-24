@@ -64,3 +64,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_USER_APP_URL=http://103.82.24.142:8080
+            NEXT_PUBLIC_SITE_URL=http://103.82.24.142:3000

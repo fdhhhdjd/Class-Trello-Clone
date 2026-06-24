@@ -1,0 +1,135 @@
+name: trello
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trello}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trello}
+      POSTGRES_DB: ${POSTGRES_DB:-trello}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trello -d trello"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - backend
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY;
+      mc mb --ignore-existing local/trello;
+      mc anonymous set download local/trello;
+      exit 0;
+      "
+
+  api:
+    image: ghcr.io/${GHCR_OWNER:-fdhhhdjd}/trello-clone-backend:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend-user:
+    image: ghcr.io/${GHCR_OWNER:-fdhhhdjd}/trello-clone-frontend-user:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    networks:
+      - frontend
+      - backend
+
+  frontend-admin:
+    image: ghcr.io/${GHCR_OWNER:-fdhhhdjd}/trello-clone-frontend-admin:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8081:80"
+    networks:
+      - frontend
+      - backend
+
+  landing:
+    image: ghcr.io/${GHCR_OWNER:-fdhhhdjd}/trello-clone-landing:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      LANDING_API_URL: http://api:4000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    networks:
+      - frontend
+      - backend
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  pgdata:
+  miniodata:
