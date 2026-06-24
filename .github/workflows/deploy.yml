@@ -1,0 +1,31 @@
+name: Deploy to VPS (class-02)
+
+on:
+  workflow_run:
+    workflows:
+      - "Publish Backend Docker image"
+      - "Publish Frontend Docker images"
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/trello
+            git pull --ff-only
+            cd Trello-Clone-Infra
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml exec -T api npx prisma migrate deploy
+            docker image prune -f
