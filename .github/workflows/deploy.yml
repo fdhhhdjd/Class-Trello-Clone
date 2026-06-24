@@ -28,4 +28,5 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
             docker compose -f docker-compose.prod.yml exec -T api npx prisma migrate deploy
+            docker compose -f docker-compose.prod.yml exec -T api npm run seed
             docker image prune -f
