@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+.env
+.env.local
+*.log
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo
+.vite/

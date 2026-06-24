@@ -1,0 +1,17 @@
+/* Base reset + animations live in @trello/ui GlobalStyles. App-only overrides here. */
+#root { isolation: isolate; }
+
+@keyframes trello-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.trello-page-enter { animation: trello-page-enter 180ms ease-out; }
+
+/* Card tile hover lift (applied via .trello-card-tile). */
+.trello-card-tile { transition: box-shadow .15s ease, transform .12s ease, border-color .15s ease; }
+.trello-card-tile:hover { transform: translateY(-2px); box-shadow: rgba(9, 30, 66, 0.20) 0px 6px 14px 0px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .trello-page-enter { animation: none; }
+  .trello-card-tile:hover { transform: none; }
+}

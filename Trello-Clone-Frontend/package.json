@@ -1,0 +1,15 @@
+{
+  "name": "trello-clone-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:user": "npm run dev -w @trello/user",
+    "dev:admin": "npm run dev -w @trello/admin",
+    "dev:landing": "npm run dev -w @trello/landing",
+    "build": "npm run build -w @trello/user && npm run build -w @trello/admin && npm run build -w @trello/landing"
+  }
+}

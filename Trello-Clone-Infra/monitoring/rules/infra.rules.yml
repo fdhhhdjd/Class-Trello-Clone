@@ -1,0 +1,51 @@
+# Host + dependency resource alerts (USE method).
+groups:
+  - name: infra_alerts
+    rules:
+      - alert: HostHighCpu
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "CPU > 90% trên {{ $labels.instance }}"
+          description: "CPU {{ $value | printf \"%.0f\" }}% trong 5m."
+
+      - alert: HostHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "RAM > 85% trên {{ $labels.instance }}"
+          description: "RAM dùng {{ $value | printf \"%.0f\" }}%."
+
+      - alert: HostDiskAlmostFull
+        expr: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}
+          / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"})) * 100 > 90
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Disk / > 90% trên {{ $labels.instance }}"
+          description: "Disk dùng {{ $value | printf \"%.0f\" }}%."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "PostgreSQL DOWN"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Redis DOWN"
+
+      - alert: RedisEvictingKeys
+        expr: rate(redis_evicted_keys_total[5m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Redis đang evict keys"
+          description: "maxmemory chạm trần — cân nhắc tăng RAM hoặc TTL."

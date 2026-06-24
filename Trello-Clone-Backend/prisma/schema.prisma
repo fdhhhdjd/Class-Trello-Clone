@@ -1,0 +1,503 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Auth & Users =====
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  avatarUrl    String?  @map("avatar_url")
+  bio          String?
+  isActive     Boolean  @default(true) @map("is_active")
+  tokenVersion Int      @default(0) @map("token_version")
+  twofaSecret  String?  @map("twofa_secret")
+  settings     Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  refreshTokens RefreshToken[]
+  userRoles     UserRole[]     @relation("UserRoles")
+  grantedRoles  UserRole[]     @relation("GrantedRoles")
+  ownedWorkspaces Workspace[]  @relation("WorkspaceOwner")
+  cardMembers   CardMember[]
+  comments      Comment[]
+  attachments   Attachment[]
+  activities    Activity[]
+  notifications Notification[]
+  boardStars    BoardStar[]
+  cardWatchers  CardWatcher[]
+  boardMembers  BoardMember[]
+  reactions     Reaction[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @map("token_hash")
+  jti       String   @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  used      Boolean  @default(false)
+  userAgent String?  @map("user_agent")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([jti])
+  @@map("refresh_tokens")
+}
+
+// ===== RBAC =====
+
+model Role {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique
+  name        String
+  description String?
+  isSystem    Boolean @default(false) @map("is_system")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique
+  resource    String
+  action      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@index([resource])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int @map("role_id")
+  permissionId Int @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  roleId    Int       @map("role_id")
+  tenantId  String?   @map("tenant_id") @db.Uuid // workspace_id for tier B; NULL for system roles
+  grantedBy String?   @map("granted_by") @db.Uuid
+  grantedAt DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  user    User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role    Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  granter User? @relation("GrantedRoles", fields: [grantedBy], references: [id], onDelete: SetNull)
+
+  // tenantId nullable cannot live in a composite PK; uniqueness enforced at app layer.
+  @@index([userId, roleId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("user_roles")
+}
+
+model AccessAudit {
+  id        BigInt   @id @default(autoincrement())
+  actorId   String   @map("actor_id") @db.Uuid
+  targetId  String?  @map("target_id") @db.Uuid
+  action    String
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("access_audit")
+}
+
+// ===== Workspaces / Boards =====
+
+enum Visibility {
+  private
+  workspace
+  public
+}
+
+model Workspace {
+  id         String     @id @default(uuid()) @db.Uuid
+  name       String
+  ownerId    String     @map("owner_id") @db.Uuid
+  visibility Visibility @default(private)
+  isLocked   Boolean    @default(false) @map("is_locked")
+  logoUrl    String?    @map("logo_url")
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  boards  Board[]
+  invites WorkspaceInvite[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+}
+
+model WorkspaceInvite {
+  token       String    @id
+  workspaceId String    @map("workspace_id") @db.Uuid
+  role        String    @default("ws_member")
+  createdById String    @map("created_by_id") @db.Uuid
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("workspace_invites")
+}
+
+model Board {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @map("workspace_id") @db.Uuid
+  name        String
+  description String?
+  background  String?
+  visibility  Visibility @default(workspace)
+  archived    Boolean    @default(false)
+  isTemplate  Boolean    @default(false) @map("is_template")
+  cardSeq     Int        @default(0) @map("card_seq")
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lists      List[]
+  labels     Label[]
+  activities Activity[]
+  stars      BoardStar[]
+  members    BoardMember[]
+  customFields CustomField[]
+
+  @@index([workspaceId])
+  @@map("boards")
+}
+
+enum BoardRole {
+  admin
+  member
+  observer
+}
+
+model BoardMember {
+  boardId   String    @map("board_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  role      BoardRole @default(member)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([boardId, userId])
+  @@index([userId])
+  @@map("board_members")
+}
+
+model BoardStar {
+  boardId   String   @map("board_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([boardId, userId])
+  @@index([userId])
+  @@map("board_stars")
+}
+
+model List {
+  id        String   @id @default(uuid()) @db.Uuid
+  boardId   String   @map("board_id") @db.Uuid
+  name      String
+  position  Float
+  wipLimit  Int?     @map("wip_limit")
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@index([boardId])
+  @@map("lists")
+}
+
+model Card {
+  id          String    @id @default(uuid()) @db.Uuid
+  listId      String    @map("list_id") @db.Uuid
+  number      Int?
+  title       String
+  description String?
+  status      String?
+  isTemplate  Boolean   @default(false) @map("is_template")
+  position    Float
+  dueDate     DateTime? @map("due_date") @db.Timestamptz(6)
+  startDate   DateTime? @map("start_date") @db.Timestamptz(6)
+  coverUrl    String?   @map("cover_url")
+  archived    Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  list        List          @relation(fields: [listId], references: [id], onDelete: Cascade)
+  members     CardMember[]
+  cardLabels  CardLabel[]
+  checklists  Checklist[]
+  comments    Comment[]
+  attachments Attachment[]
+  activities  Activity[]
+  watchers    CardWatcher[]
+  fieldValues CustomFieldValue[]
+  reactions   Reaction[]
+
+  @@index([listId])
+  @@map("cards")
+}
+
+enum CustomFieldType {
+  text
+  number
+  date
+  checkbox
+  dropdown
+}
+
+model CustomField {
+  id       String          @id @default(uuid()) @db.Uuid
+  boardId  String          @map("board_id") @db.Uuid
+  name     String
+  type     CustomFieldType @default(text)
+  options  Json? // for dropdown: array of strings
+  position Float           @default(0)
+
+  board  Board              @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  values CustomFieldValue[]
+
+  @@index([boardId])
+  @@map("custom_fields")
+}
+
+model CustomFieldValue {
+  fieldId String @map("field_id") @db.Uuid
+  cardId  String @map("card_id") @db.Uuid
+  value   Json?
+
+  field CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  card  Card        @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([fieldId, cardId])
+  @@index([cardId])
+  @@map("custom_field_values")
+}
+
+model CardWatcher {
+  cardId String @map("card_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId])
+  @@index([userId])
+  @@map("card_watchers")
+}
+
+model CardMember {
+  cardId String @map("card_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId])
+  @@index([userId])
+  @@map("card_members")
+}
+
+model Label {
+  id      String @id @default(uuid()) @db.Uuid
+  boardId String @map("board_id") @db.Uuid
+  name    String?
+  color   String
+
+  board      Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cardLabels CardLabel[]
+
+  @@index([boardId])
+  @@map("labels")
+}
+
+model CardLabel {
+  cardId  String @map("card_id") @db.Uuid
+  labelId String @map("label_id") @db.Uuid
+
+  card  Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, labelId])
+  @@map("card_labels")
+}
+
+model Checklist {
+  id        String   @id @default(uuid()) @db.Uuid
+  cardId    String   @map("card_id") @db.Uuid
+  title     String
+  position  Float    @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  card  Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  items ChecklistItem[]
+
+  @@index([cardId])
+  @@map("checklists")
+}
+
+model ChecklistItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  checklistId String   @map("checklist_id") @db.Uuid
+  text        String
+  done        Boolean  @default(false)
+  position    Float    @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([checklistId])
+  @@map("checklist_items")
+}
+
+model Comment {
+  id        String    @id @default(uuid()) @db.Uuid
+  cardId    String    @map("card_id") @db.Uuid
+  authorId  String    @map("author_id") @db.Uuid
+  body      String
+  editedAt  DateTime? @map("edited_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  card      Card       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions Reaction[]
+
+  @@index([cardId])
+  @@map("comments")
+}
+
+model Reaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  cardId    String?  @map("card_id") @db.Uuid
+  commentId String?  @map("comment_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  card    Card?    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, userId, emoji])
+  @@unique([commentId, userId, emoji])
+  @@index([cardId])
+  @@index([commentId])
+  @@map("reactions")
+}
+
+model Attachment {
+  id         String   @id @default(uuid()) @db.Uuid
+  cardId     String   @map("card_id") @db.Uuid
+  uploaderId String   @map("uploader_id") @db.Uuid
+  key        String // MinIO object key
+  filename   String
+  size       Int
+  mime       String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  card     Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+  @@map("attachments")
+}
+
+model Activity {
+  id        String   @id @default(uuid()) @db.Uuid
+  boardId   String?  @map("board_id") @db.Uuid
+  cardId    String?  @map("card_id") @db.Uuid
+  actorId   String   @map("actor_id") @db.Uuid
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  board Board? @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  card  Card?  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  actor User   @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, createdAt(sort: Desc)])
+  @@index([cardId, createdAt(sort: Desc)])
+  @@map("activities")
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("settings")
+}
+
+model BackupRun {
+  id           String    @id @default(uuid()) @db.Uuid
+  kind         String // manual | scheduled
+  status       String // pending | running | success | failed
+  scopeDb      Boolean   @default(false) @map("scope_db")
+  scopeUploads Boolean   @default(false) @map("scope_uploads")
+  scopeConfigs Boolean   @default(false) @map("scope_configs")
+  startedAt    DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+  sizeBytes    Float     @default(0) @map("size_bytes")
+  remotePath   String    @default("") @map("remote_path")
+  error        String    @default("")
+  logTail      String    @default("") @map("log_tail")
+  triggeredBy  String?   @map("triggered_by") @db.Uuid
+
+  @@index([startedAt])
+  @@map("backup_runs")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String
+  payload   Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}

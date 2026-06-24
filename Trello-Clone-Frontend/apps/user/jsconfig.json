@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@trello/ui": ["../../packages/ui/src"]
+    }
+  }
+}
