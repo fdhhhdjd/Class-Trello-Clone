@@ -13,3 +13,6 @@ prisma/*.db
 nginx/certs/
 *.tsbuildinfo
 .vite/
+
+.claude/
+CLAUDE.md
