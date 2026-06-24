@@ -100,6 +100,7 @@ export async function copyList(userId, listId) {
           dueDate: true,
           startDate: true,
           coverUrl: true,
+          priority: true,
           cardLabels: { select: { labelId: true } },
           checklists: {
             orderBy: { position: "asc" },
@@ -141,6 +142,7 @@ export async function copyList(userId, listId) {
           dueDate: card.dueDate,
           startDate: card.startDate,
           coverUrl: card.coverUrl,
+          priority: card.priority,
           cardLabels: { create: card.cardLabels.map((cl) => ({ labelId: cl.labelId })) },
           checklists: {
             create: card.checklists.map((cl) => ({

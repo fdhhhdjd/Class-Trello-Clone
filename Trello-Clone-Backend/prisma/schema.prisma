@@ -204,6 +204,13 @@ enum BoardRole {
   observer
 }
 
+enum CardPriority {
+  none
+  low
+  medium
+  high
+}
+
 model BoardMember {
   boardId   String    @map("board_id") @db.Uuid
   userId    String    @map("user_id") @db.Uuid
@@ -255,6 +262,7 @@ model Card {
   title       String
   description String?
   status      String?
+  priority    CardPriority @default(none)
   isTemplate  Boolean   @default(false) @map("is_template")
   position    Float
   dueDate     DateTime? @map("due_date") @db.Timestamptz(6)

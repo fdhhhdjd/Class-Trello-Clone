@@ -17,6 +17,7 @@ export const updateCardSchema = z
     coverUrl: z.string().max(1024).nullable().optional(),
     archived: z.boolean().optional(),
     status: z.enum(["todo", "doing", "done", "blocked"]).nullable().optional(),
+    priority: z.enum(["none", "low", "medium", "high"]).optional(),
     isTemplate: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "No fields to update" });

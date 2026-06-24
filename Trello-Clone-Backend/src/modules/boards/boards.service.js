@@ -162,6 +162,7 @@ export async function copyBoard(userId, boardId, name) {
               startDate: true,
               coverUrl: true,
               archived: true,
+              priority: true,
               cardLabels: { select: { labelId: true } },
               checklists: {
                 orderBy: { position: "asc" },
@@ -227,6 +228,7 @@ export async function copyBoard(userId, boardId, name) {
             startDate: card.startDate,
             coverUrl: card.coverUrl,
             archived: card.archived,
+            priority: card.priority,
             cardLabels: {
               create: card.cardLabels
                 .filter((cl) => labelMap.has(cl.labelId))
@@ -317,6 +319,7 @@ export async function getBoardDetail(userId, boardId) {
               title: true,
               description: true,
               status: true,
+              priority: true,
               position: true,
               dueDate: true,
               startDate: true,
@@ -361,6 +364,7 @@ export async function getBoardDetail(userId, boardId) {
         title: card.title,
         description: card.description,
         status: card.status,
+        priority: card.priority,
         position: card.position,
         dueDate: card.dueDate,
         startDate: card.startDate,
